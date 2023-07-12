@@ -1,132 +1,107 @@
-#include "kernel/types.h"
-#include "kernel/riscv.h"
-#include "kernel/sysinfo.h"
-#include "user/user.h"
+#include "types.h"
+#include "riscv.h"
+#include "defs.h"
+#include "date.h"
+#include "param.h"
+#include "memlayout.h"
+#include "spinlock.h"
+#include "proc.h"
 
-
-void
-sinfo(struct sysinfo *info) {
-  if (sysinfo(info) < 0) {
-    printf("FAIL: sysinfo failed");
-    exit(1);
-  }
-}
-
-//
-// use sbrk() to count how many free physical memory pages there are.
-//
-int
-countfree()
+uint64
+sys_exit(void)
 {
-  uint64 sz0 = (uint64)sbrk(0);
-  struct sysinfo info;
-  int n = 0;
+  int n;
+  if(argint(0, &n) < 0)
+    return -1;
+  exit(n);
+  return 0;  // not reached
+}
 
-  while(1){
-    if((uint64)sbrk(PGSIZE) == 0xffffffffffffffff){
-      break;
+uint64
+sys_getpid(void)
+{
+  return myproc()->pid;
+}
+
+uint64
+sys_fork(void)
+{
+  return fork();
+}
+
+uint64
+sys_wait(void)
+{
+  uint64 p;
+  if(argaddr(0, &p) < 0)
+    return -1;
+  return wait(p);
+}
+
+uint64
+sys_sbrk(void)
+{
+  int addr;
+  int n;
+
+  if(argint(0, &n) < 0)
+    return -1;
+  addr = myproc()->sz;
+  if(growproc(n) < 0)
+    return -1;
+  return addr;
+}
+
+uint64
+sys_sleep(void)
+{
+  int n;
+  uint ticks0;
+
+  if(argint(0, &n) < 0)
+    return -1;
+  acquire(&tickslock);
+  ticks0 = ticks;
+  while(ticks - ticks0 < n){
+    if(myproc()->killed){
+      release(&tickslock);
+      return -1;
     }
-    n += PGSIZE;
+    sleep(&ticks, &tickslock);
   }
-  sinfo(&info);
-  if (info.freemem != 0) {
-    printf("FAIL: there is no free mem, but sysinfo.freemem=%d\n",
-      info.freemem);
-    exit(1);
-  }
-  sbrk(-((uint64)sbrk(0) - sz0));
-  return n;
+  release(&tickslock);
+  return 0;
 }
 
-void
-testmem() {
-  struct sysinfo info;
-  uint64 n = countfree();
-  
-  sinfo(&info);
-
-  if (info.freemem!= n) {
-    printf("FAIL: free mem %d (bytes) instead of %d\n", info.freemem, n);
-    exit(1);
-  }
-  
-  if((uint64)sbrk(PGSIZE) == 0xffffffffffffffff){
-    printf("sbrk failed");
-    exit(1);
-  }
-
-  sinfo(&info);
-    
-  if (info.freemem != n-PGSIZE) {
-    printf("FAIL: free mem %d (bytes) instead of %d\n", n-PGSIZE, info.freemem);
-    exit(1);
-  }
-  
-  if((uint64)sbrk(-PGSIZE) == 0xffffffffffffffff){
-    printf("sbrk failed");
-    exit(1);
-  }
-
-  sinfo(&info);
-    
-  if (info.freemem != n) {
-    printf("FAIL: free mem %d (bytes) instead of %d\n", n, info.freemem);
-    exit(1);
-  }
-}
-
-void
-testcall() {
-  struct sysinfo info;
-  
-  if (sysinfo(&info) < 0) {
-    printf("FAIL: sysinfo failed\n");
-    exit(1);
-  }
-
-  if (sysinfo((struct sysinfo *) 0xeaeb0b5b00002f5e) !=  0xffffffffffffffff) {
-    printf("FAIL: sysinfo succeeded with bad argument\n");
-    exit(1);
-  }
-}
-
-void testproc() {
-  struct sysinfo info;
-  uint64 nproc;
-  int status;
+uint64
+sys_kill(void)
+{
   int pid;
-  
-  sinfo(&info);
-  nproc = info.nproc;
 
-  pid = fork();
-  if(pid < 0){
-    printf("sysinfotest: fork failed\n");
-    exit(1);
-  }
-  if(pid == 0){
-    sinfo(&info);
-    if(info.nproc != nproc+1) {
-      printf("sysinfotest: FAIL nproc is %d instead of %d\n", info.nproc, nproc+1);
-      exit(1);
-    }
-    exit(0);
-  }
-  wait(&status);
-  sinfo(&info);
-  if(info.nproc != nproc) {
-      printf("sysinfotest: FAIL nproc is %d instead of %d\n", info.nproc, nproc);
-      exit(1);
-  }
+  if(argint(0, &pid) < 0)
+    return -1;
+  return kill(pid);
 }
 
-int
-main(int argc, char *argv[])
+// return how many clock tick interrupts have occurred
+// since start.
+uint64
+sys_uptime(void)
 {
-  printf("sysinfotest: start\n");
-  testcall();
-  testmem();
-  testproc();
-  printf("sysinfotest: OK\n");
-  exit(0);
+  uint xticks;
+
+  acquire(&tickslock);
+  xticks = ticks;
+  release(&tickslock);
+  return xticks;
+}
+
+uint64
+sys_trace(void){
+  int n;
+  
+  if(argint(0, &n) < 0)
+	 return -1;  
+  myproc()->trace_mask = n;
+  return 0; 
 }
