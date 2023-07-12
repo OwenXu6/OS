@@ -1,118 +1,48 @@
 #include "kernel/types.h"
-#include "kernel/stat.h"
-#include "user.h"
-#include "kernel/fs.h"
+#include "user/user.h"
 #include "kernel/param.h"
 
-#define CMDSTYLE        2
+#define NULL ((char*)0) 
 
-char *cutoffinput(char *buf);
-void substring(char s[], char sub[], int pos, int len);
-void printargs(char* args[MAXARG][CMDSTYLE], int args_num);
 
-/* 打印参数 */
-void 
-printargs(char* args[MAXARG][CMDSTYLE], int args_num){
-    for (int i = 0; i < args_num; i++)
-    {
-        /* code */
-        printf("--------------args %d:--------------\n", i + 1);
-        printf("cmd: %s, arg: %s, argslen: %d \n", args[i][0], args[i][1], strlen(args[i][1]));
-    }
-    
+char* readline(){
+	char buf[512], c;
+	int pos = -1;
+	while(read(0, &c, sizeof(char))){
+		if(c == '\n'){
+			break;
+		}else{
+			buf[++pos] = c;
+		}
+	}
+	if(pos == -1){
+		return NULL;
+	}
+	//need to free
+	char *p = malloc((pos+1) * sizeof(char));
+	memmove(p, buf, pos+1);
+	return p;
+}	
+
+int main(int argc, char *argv[]){
+	if(argc < 3){
+		fprintf(2, "Usage : xargs command args...\n");
+		exit(1);
+	}
+	char *argv_new[MAXARG];
+	for(int i = 1; i < argc; i++){
+		argv_new[i-1] = argv[i];
+	}
+	char *r;
+	while((r = readline()) != NULL){
+		argv_new[argc-1] = r;
+		if(fork() == 0){
+			exec(argv_new[0], argv_new);
+			free(r);
+			exit(0);
+		}else{
+			wait(0);
+		}
+	}	
+	exit(0);
 }
-/* 子串 */
-void 
-substring(char s[], char *sub, int pos, int len) {
-   int c = 0;   
-   while (c < len) {
-      *(sub + c) = s[pos+c];
-      c++;
-   }
-   *(sub + c) = '\0';
-}
-
-/* 截断 '\n' */
-char* 
-cutoffinput(char *buf){
-    /* 记得要为char *新分配一片地址空间，否则编译器默认指向同一片地址 */
-    if(strlen(buf) > 1 && buf[strlen(buf) - 1] == '\n'){
-        char *subbuff = (char*)malloc(sizeof(char) * (strlen(buf) - 1));
-        substring(buf, subbuff, 0, strlen(buf) - 1);
-        return subbuff;
-    }
-    else
-    {
-        char *subbuff = (char*)malloc(sizeof(char) * strlen(buf));
-        strcpy(subbuff, buf);
-        return subbuff;
-    }
-}
-
-int 
-main(int argc, char *argv[])
-{
-    /* code */
-    int pid;
-    char buf[MAXPATH];
-    char *args[MAXARG];
-    char *cmd;
-    /* 默认命令为echo */
-    if(argc == 1){
-        cmd = "echo";
-    }
-    else{
-        cmd = argv[1];
-    }
-    /* 计数器 */
-    int args_num = 0;
-    while (1)
-    {
-        memset(buf, 0, sizeof(buf));
-        gets(buf, MAXPATH);
-        /* printf("buf:%s",buf); */
-        char *arg = cutoffinput(buf);
-        /* printf("xargs:gets arg: %s, arglen: %d\n", arg, strlen(arg)); */
-        /* press ctrl + D */
-        if(strlen(arg) == 0 || args_num >= MAXARG){
-            break;
-        }
-        args[args_num]= arg;
-        args_num++;
-    }
-
-    /* 
-        printargs(args, args_num);
-        printf("Break Here\n");
-     */
-    /* 填充exec需要执行的命令至argv2exec */
-    int argstartpos = 1;
-    char *argv2exec[MAXARG];
-    argv2exec[0] = cmd;
-
-    for (; argstartpos < argc; argstartpos++)
-    {
-        argv2exec[argstartpos] = argv[argstartpos - 2];
-    }
-    
-    for (int i = 0; i < args_num; i++)
-    {
-        /* code */
-        argv2exec[i + argstartpos] = args[i];
-    }
-    argv2exec[args_num + argstartpos] = 0;
-    
-    /* 运行cmd */
-    if((pid = fork()) == 0){   
-        exec(cmd, argv2exec);    
-    }  
-    else
-    {
-        /* code */
-        wait();
-    }
-    exit(1);
-}
-
-
-

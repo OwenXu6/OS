@@ -3,7 +3,6 @@
 #include "user/user.h"
 #include "kernel/fs.h"
 
-//Copy from Grep.c
 char buf[1024];
 int match(char*, char*);
 int matchhere(char*, char*);
@@ -86,10 +85,6 @@ fmtname(char *path)
 
 void 
 find(char *path, char *re){
-  // printf("---------------------------------------------\n");
-  // printf("path:%s\n", path);
-  // printf("fmtpath:%s\n",fmtname(path));
-  // printf("re:%s\n", re);
   char buf[512], *p;
   int fd;
   struct dirent de;
@@ -108,11 +103,9 @@ find(char *path, char *re){
   
   switch(st.type){
   case T_FILE:
-      //printf("File re: %s, fmtpath: %s\n", re, fmtname(path));
       if(match(re, fmtname(path)))
           printf("%s\n", path);
       break;
-          //printf("%s %d %d %l\n", fmtname(path), st.type, st.ino, st.size);
 
   case T_DIR:
       if(strlen(path) + 1 + DIRSIZ + 1 > sizeof buf){
